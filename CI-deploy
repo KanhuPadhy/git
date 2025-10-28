@@ -1,0 +1,71 @@
+name: Deploy KCTRONICS Monitoring (CI)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy-monitoring:
+    runs-on: ubuntu-latest
+    env:
+      # Defaults (can be overridden by secrets or repo variables)
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      BUCKET: ${{ secrets.S3_BUCKET }}
+      KEY: kctronics_monitoring_dashboard_v1.zip
+      LOCAL_ZIP: ./kctronics_monitoring_dashboard_v1.zip
+      USERDATA_FILE: ./ec2_user_data.sh
+      TERRAFORM_DIR: ./terraform
+      PRESIGN_EXPIRES: 86400
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure monitoring ZIP is present
+        run: |
+          if [ ! -f "${{ env.LOCAL_ZIP }}" ]; then
+            echo "::error ::Monitoring zip not found at ${LOCAL_ZIP}. Please add kctronics_monitoring_dashboard_v1.zip to the repo or upload it prior to running CI."
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install boto3 (for presign)
+        run: python -m pip install --upgrade pip boto3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Make CI deploy script executable
+        run: chmod +x ./inject_and_deploy_ci.sh
+
+      - name: Run CI deploy (non-interactive)
+        run: |
+          # Allow overriding vars by adding them to workflow env / secrets
+          export BUCKET="${{ secrets.S3_BUCKET }}"
+          export AWS_REGION="${{ secrets.AWS_REGION }}"
+          export PUBLIC_KEY_PATH="${{ secrets.PUBLIC_KEY_PATH }}"
+          export KEY_NAME="${{ secrets.KEY_NAME }}"
+          export ADMIN_CIDR="${{ secrets.ADMIN_CIDR }}"
+          # Run the script (non-interactive)
+          ./inject_and_deploy_ci.sh
+        # Mask secrets in logs
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          # other secrets are set in the environment above
+
+      - name: Show Terraform outputs
+        if: success()
+        working-directory: ./terraform
+        run: terraform output || true
