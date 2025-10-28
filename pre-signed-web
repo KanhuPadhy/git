@@ -1,0 +1,14 @@
+KCTRONICS Presigned URL Helper
+==============================
+
+Usage:
+1. Ensure AWS CLI credentials are configured or AWS_PROFILE exported.
+2. Install boto3 if not installed:
+   python3 -m pip install --user boto3
+3. Run:
+   python3 create_presigned_url.py --bucket your-bucket --key kctronics_monitoring_dashboard_v1.zip --expires 86400
+4. Copy the generated HTTPS URL into your ec2_user_data.sh as:
+   MONITORING_S3_URL="<your generated URL>"
+
+IAM permissions required:
+- s3:GetObject for the specific S3 object (or Put/List if also uploading).
